@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-from histomil.datasets import H5Dataset, variable_patches_collate_fn
+from histomil.datasets import H5Dataset, variable_patches_collate_fn, weighted_sampler
 from histomil.models import import_model
 from histomil.train import test, train
 from histomil.utils import get_weights, seed_torch
@@ -41,6 +41,7 @@ class FixedParameterTrainer:
         use_class_weights=True,
         transfer_mode="scratch",
         pretrained_checkpoint=None,
+        use_weighted_sampler=False,
     ):
         self.folds = folds
         self.features_path = os.path.realpath(features_path)
@@ -53,6 +54,7 @@ class FixedParameterTrainer:
         self.learning_rate = learning_rate
         self.mil = mil
         self.use_class_weights = use_class_weights
+        self.use_weighted_sampler = use_weighted_sampler
         self.transfer_mode = transfer_mode
         self.pretrained_checkpoint = (
             os.path.realpath(pretrained_checkpoint)
@@ -163,15 +165,13 @@ class FixedParameterTrainer:
 
     def _create_loader(self, dataset_csv, split, shuffle):
         """Create a DataLoader for one dataset split."""
+        dataset = H5Dataset(self.features_path, dataset_csv, split, variable_patches=True)
+        sampler = weighted_sampler(dataset) if split == "train" and self.use_weighted_sampler else None
         return DataLoader(
-            H5Dataset(
-                self.features_path,
-                dataset_csv,
-                split,
-                variable_patches=True,
-            ),
+            dataset,
             batch_size=self.batch_size,
-            shuffle=shuffle,
+            shuffle=shuffle if sampler is None else False,
+            sampler=sampler,
             collate_fn=variable_patches_collate_fn,
             worker_init_fn=lambda _: np.random.seed(self.SEED),
         )
@@ -193,6 +193,7 @@ class FixedParameterTrainer:
         """Train and evaluate one fixed parameter configuration across folds."""
         self.logger.info("=" * 60)
         self.logger.info("Starting fixed-parameter training")
+        self.logger.info("Use weighted sampler: %s", self.use_weighted_sampler)
         self.logger.info("=" * 60)
         self.logger.info("MIL: %s", self.mil)
         self.logger.info("Feature extractor: %s", self.feature_extractor)

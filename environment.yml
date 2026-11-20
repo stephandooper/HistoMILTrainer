@@ -8,6 +8,7 @@ dependencies:
   - pip:
     - git+https://github.com/mahmoodlab/MIL-Lab.git #Replace it with original when the PR is merged
     - git+https://github.com/oval-group/smooth-topk.git # Required for CLAM
+    - torchmetrics==1.9.0
     - seaborn
     - matplotlib
     - pytest

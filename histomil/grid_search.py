@@ -16,6 +16,7 @@ from histomil import (
     import_model,
     variable_patches_collate_fn,
 )
+from histomil.datasets import weighted_sampler
 from histomil.predict import patch_wikg_avoid_nxn
 from histomil.train import train, test
 
@@ -30,7 +31,8 @@ class GridSearch:
 
     def __init__(self, folds, features_path, splits_dir, csv_path, results_dir,
                  feature_extractor="uni_v2", epochs=10, learning_rate=4e-4,
-                 mil="abmil", use_class_weights=True, grid_params_path="configs/abmil.json"):
+                 mil="abmil", use_class_weights=True, grid_params_path="configs/abmil.json",
+                 use_weighted_sampler=False):
         """
         Initialize GridSearch.
 
@@ -46,6 +48,7 @@ class GridSearch:
             mil: MIL architecture name (default: "abmil")
             use_class_weights: Whether to use class weights (default: True)
             grid_params_path: Path to JSON file with grid search parameters
+            use_weighted_sampler: Whether to balance training slide sampling (default: False)
         """
         self.folds = folds
         self.features_path = os.path.realpath(features_path)
@@ -57,6 +60,7 @@ class GridSearch:
         self.learning_rate = learning_rate
         self.mil = mil
         self.use_class_weights = use_class_weights
+        self.use_weighted_sampler = use_weighted_sampler
         self.batch_size = 1 if mil == "clam" else self.BATCH_SIZE
 
         self.logger = logging.getLogger(__name__)
@@ -72,6 +76,7 @@ class GridSearch:
         self.logger.info(f"  - Learning rate: {learning_rate}")
         self.logger.info(f"  - MIL model: {mil}")
         self.logger.info(f"  - Use class weights: {use_class_weights}")
+        self.logger.info(f"  - Use weighted sampler: {use_weighted_sampler}")
         self.logger.info(f"  - Batch size: {self.batch_size}")
         self.logger.info(f"  - Device: {device}")
 
@@ -129,10 +134,13 @@ class GridSearch:
         """Create DataLoader for a given split."""
         split_data = dataset_csv[dataset_csv[split] == True]
         self.logger.debug(f"Creating DataLoader for {split} split: {len(split_data)} slides, shuffle={shuffle}")
+        dataset = H5Dataset(self.features_path, dataset_csv, split, variable_patches=True)
+        sampler = weighted_sampler(dataset) if split == "train" and self.use_weighted_sampler else None
         loader = DataLoader(
-            H5Dataset(self.features_path, dataset_csv, split, variable_patches=True),
+            dataset,
             batch_size=self.batch_size,
-            shuffle=shuffle,
+            shuffle=shuffle if sampler is None else False,
+            sampler=sampler,
             collate_fn=variable_patches_collate_fn,
             worker_init_fn=lambda _: np.random.seed(self.SEED),
         )
@@ -228,6 +236,13 @@ class GridSearch:
 
         self.logger.debug("Normalizing grid search results")
         grid_search_results = pd.json_normalize(grid_search_results)
+        grid_search_results.to_csv(
+            os.path.join(
+                self.results_dir,
+                f"training_results_{self.feature_extractor}.{self.mil}.csv",
+            ),
+            index=False,
+        )
         params_columns = [
             col for col in grid_search_results.columns if col.startswith("params.")
         ]

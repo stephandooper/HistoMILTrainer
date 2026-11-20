@@ -2,7 +2,8 @@
 import torch
 from torch import nn, optim
 from histomil.utils import EarlyStopping
-from sklearn.metrics import roc_auc_score, accuracy_score, confusion_matrix, precision_recall_curve, classification_report, f1_score
+from sklearn.metrics import f1_score
+from histomil.metrics import SlideMetrics
 import numpy as np
 from tqdm import tqdm
 import os
@@ -155,9 +156,13 @@ def train(model, train_loader, val_loader, results_dir, learning_rate, fold, epo
         "train_loss": float('inf'),
         "train_auc": 0.0,
         "train_acc": 0.0,
+        "train_balanced_acc": 0.0,
+        "train_ece": 0.0,
         "val_loss": float('inf'),
         "val_auc": 0.0,
         "val_acc": 0.0,
+        "val_balanced_acc": 0.0,
+        "val_ece": 0.0,
     }
 
     # Generate checkpoint name once, outside the loop
@@ -174,8 +179,7 @@ def train(model, train_loader, val_loader, results_dir, learning_rate, fold, epo
         # Training
         model.train()
         train_loss = 0.
-        train_preds = []
-        train_labels = []
+        train_metrics = SlideMetrics(device)
         for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}"):
             # Handle variable patches: batch is a list of (features, label) tuples
             # Variable patches mode: process each slide individually
@@ -206,8 +210,7 @@ def train(model, train_loader, val_loader, results_dir, learning_rate, fold, epo
 
                 # Collect predictions
                 probs = torch.softmax(logits["logits"], dim=1)
-                train_preds.append(probs[0, 1].detach().cpu().item())
-                train_labels.append(label[0].detach().cpu().item())
+                train_metrics.update(probs, label)
 
             # Update weights once after processing all slides in batch
             optimizer.step()
@@ -217,15 +220,14 @@ def train(model, train_loader, val_loader, results_dir, learning_rate, fold, epo
             train_loss += total_loss
         train_loss /= len(train_loader)
 
-        train_auc = roc_auc_score(train_labels, train_preds)
-        train_acc = accuracy_score(train_labels, np.array(train_preds) > 0.5)
-        logger.debug(f"Training metrics computed: {len(train_labels)} samples")
+        train_scores = train_metrics.compute()
+        train_metrics.reset()
+        train_auc, train_acc = train_scores["auc"], train_scores["acc"]
 
         # Validate
         model.eval()
         val_loss = 0
-        val_preds = []
-        val_labels = []
+        val_metrics = SlideMetrics(device)
 
         with torch.no_grad(): #No grad
             for batch in tqdm(val_loader, desc="Validation"):
@@ -250,21 +252,20 @@ def train(model, train_loader, val_loader, results_dir, learning_rate, fold, epo
 
                     # Collect predictions
                     probs = torch.softmax(logits["logits"], dim=1)
-                    val_preds.append(probs[0, 1].cpu().item())
-                    val_labels.append(label[0].cpu().item())
+                    val_metrics.update(probs, label)
 
                 # Average loss across slides in batch
                 total_loss = batch_loss / len(batch)
                 val_loss += total_loss
 
         val_loss /= len(val_loader)
-        val_auc = roc_auc_score(val_labels, val_preds)
-        val_acc = accuracy_score(val_labels, np.array(val_preds) > 0.5)
-        logger.debug(f"Validation metrics computed: {len(val_labels)} samples")
+        val_scores = val_metrics.compute()
+        val_metrics.reset()
+        val_auc, val_acc = val_scores["auc"], val_scores["acc"]
 
         logger.info(f"Epoch {epoch+1}/{epochs} | "
-            f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}, Train Acc: {train_acc:.4f} | "
-            f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}, Val Acc: {val_acc:.4f}")
+            f"Train Loss: {train_loss:.4f}, Train AUC: {train_auc:.4f}, Train Acc: {train_acc:.4f}, Train Balanced Acc: {train_scores['balanced_acc']:.4f}, Train ECE: {train_scores['ece']:.4f} | "
+            f"Val Loss: {val_loss:.4f}, Val AUC: {val_auc:.4f}, Val Acc: {val_acc:.4f}, Val Balanced Acc: {val_scores['balanced_acc']:.4f}, Val ECE: {val_scores['ece']:.4f}")
         early_stopping(epoch, val_loss, model, ckpt_name=output_name)
 
         # Save best epoch metrics
@@ -275,9 +276,13 @@ def train(model, train_loader, val_loader, results_dir, learning_rate, fold, epo
                 "train_loss": train_loss,
                 "train_auc": train_auc,
                 "train_acc": train_acc,
+                "train_balanced_acc": train_scores["balanced_acc"],
+                "train_ece": train_scores["ece"],
                 "val_loss": val_loss,
                 "val_auc": val_auc,
                 "val_acc": val_acc,
+                "val_balanced_acc": val_scores["balanced_acc"],
+                "val_ece": val_scores["ece"],
             }
 
         if early_stopping.early_stop:
@@ -293,7 +298,7 @@ def train(model, train_loader, val_loader, results_dir, learning_rate, fold, epo
     return model, best_metrics, output_name
 
 def test(model, test_loader, class_weights = None, model_name = None):
-    """Test function: Evaluates clam model with optimal threshold selection by F1 macro."""
+    """Evaluate slide-level metrics and return positive-class probabilities and labels."""
     logger = logging.getLogger(__name__)
 
     logger.info("=" * 60)
@@ -311,8 +316,7 @@ def test(model, test_loader, class_weights = None, model_name = None):
 
     model.eval()
     all_labels, all_outputs = [], []
-    correct = 0
-    total = 0
+    test_metrics = SlideMetrics(device)
 
     logger.info("Processing test batches")
     with torch.no_grad():
@@ -332,10 +336,7 @@ def test(model, test_loader, class_weights = None, model_name = None):
                 else:
                     logits, attn = model(features)
                 probs = torch.softmax(logits["logits"], dim=1)
-                predicted = torch.argmax(probs, dim=1)  # predicted: [1]
-
-                correct += (predicted == label).sum().item()
-                total += label.size(0)
+                test_metrics.update(probs, label)
 
                 all_outputs.append(probs[0, 1].cpu().item())  # prob. clase 1
                 all_labels.append(label[0].cpu().item())
@@ -346,22 +347,26 @@ def test(model, test_loader, class_weights = None, model_name = None):
     all_labels = np.array(all_labels)
 
     logger.info(f"Computing metrics on {len(all_labels)} test samples")
-    auc = roc_auc_score(all_labels, all_outputs)
+    scores = test_metrics.compute()
+    test_metrics.reset()
+    auc = scores["auc"]
     pred_labels = (all_outputs >= 0.5).astype(int)
-    accuracy = accuracy_score(all_labels, pred_labels)
+    accuracy = scores["acc"]
     f1_macro = f1_score(all_labels, pred_labels, average='macro')
 
-    logger.info(f"Test accuracy: {correct}/{total} = {correct/total:.4f}")
+    logger.info(f"Test accuracy: {accuracy:.4f}")
 
     metrics = {
         "test_auc": auc,
         "test_acc": accuracy,
+        "test_balanced_acc": scores["balanced_acc"],
+        "test_ece": scores["ece"],
         "f1_macro": f1_macro
     }
 
     logger.info("=" * 60)
     logger.info("✓ Test evaluation completed")
-    logger.info(f"Test metrics: AUC={auc:.4f}, Acc={accuracy:.4f}, F1={f1_macro:.4f}")
+    logger.info(f"Test metrics: AUC={auc:.4f}, Acc={accuracy:.4f}, Balanced Acc={scores['balanced_acc']:.4f}, ECE={scores['ece']:.4f}, F1={f1_macro:.4f}")
     logger.info("=" * 60)
 
     return metrics, all_outputs, all_labels

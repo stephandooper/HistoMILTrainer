@@ -62,6 +62,7 @@ def grid_search():
         action=argparse.BooleanOptionalAction,
         default=True,
     )
+    parser.add_argument("--use_weighted_sampler", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--grid_params", type=str, default=None)
     parser.add_argument(
         "--log_level",
@@ -110,6 +111,7 @@ def grid_search():
         learning_rate=args.learning_rate,
         mil=args.mil,
         use_class_weights=args.use_class_weights,
+        use_weighted_sampler=args.use_weighted_sampler,
         grid_params_path=grid_params_path,
     )
     grid_search_runner.run()
@@ -136,6 +138,7 @@ def train_model():
         action=argparse.BooleanOptionalAction,
         default=True,
     )
+    parser.add_argument("--use_weighted_sampler", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--params_path", type=str, required=True)
     parser.add_argument(
         "--transfer_mode",
@@ -184,6 +187,7 @@ def train_model():
         learning_rate=args.learning_rate,
         mil=args.mil,
         use_class_weights=args.use_class_weights,
+        use_weighted_sampler=args.use_weighted_sampler,
         transfer_mode=args.transfer_mode,
         pretrained_checkpoint=args.pretrained_checkpoint,
     )

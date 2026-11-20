@@ -1,6 +1,6 @@
 import os
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, WeightedRandomSampler
 import h5py
 from pathlib import Path
 SEED = 2
@@ -14,6 +14,13 @@ def variable_patches_collate_fn(batch):
     # Simply return the batch as a list (no padding/stacking)
     # Each element is (features, label) where features shape is (num_patches, feature_dim)
     return batch
+
+def weighted_sampler(dataset):
+    """Sample slides inversely to their training class frequencies."""
+    labels = dataset.df[dataset.label_col]
+    weights = 1.0 / labels.map(labels.value_counts())
+    return WeightedRandomSampler(weights.to_numpy(), len(dataset), replacement=True)
+
 
 class H5Dataset(Dataset):
     def __init__(self, feats_path, df,

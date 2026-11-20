@@ -23,13 +23,15 @@ HistoMILTrainer offers a streamlined framework to train MIL architectures on his
 - **Cross-Validation**: Built-in support for k-fold cross-validation
 - **Transfer Learning**: Initialize MIL models from existing checkpoints and control which model components are updated during training
 - **Feature Extraction Integration**: Works seamlessly with pre-extracted patch features (e.g., from TRIDENT)
-- **Class Weighting**: Automatic class weight calculation for imbalanced datasets
+- **Class Weighting and Sampling**: Independent options for handling imbalanced datasets
 - **Early Stopping**: Prevent overfitting with configurable early stopping
 - **Case-Level Splitting**: Prevents data leakage by splitting at the case level
 - **Inference Pipeline**: Run predictions on new slides with trained models
 - **Attention Heatmap Visualization**: Generate interpretable attention heatmaps overlaid on WSIs
 
 ## Installation
+
+A dedicated GPU-capable Docker image is available; see [container build and run instructions](docker/README.md). It uses Python 3.10 and CUDA 12.8 and runs CPU validation during the build.
 
 HistoMILTrainer requires **Python 3.10**. Choose one of the following installation methods:
 
@@ -97,6 +99,8 @@ features/
 Each H5 file should contain:
 - `features`: Array of shape `(num_patches, feature_dim)`
 - Optionally: `coords`: Array of patch coordinates
+
+For Mascaret, extract patch features with a current [TRIDENT](https://github.com/mahmoodlab/TRIDENT) installation using `--patch_encoder mascaret`. Mascaret access requires approval on its [Hugging Face model page](https://huggingface.co/wearewaiv/mascaret); authenticate with an approved account before extraction. Update TRIDENT using its installation instructions if your version does not include Mascaret. Point HistoMILTrainer at the resulting precomputed H5 files and use `--feature_extractor mascaret`; their per-patch CLS features must have dimension 1536.
 
 ### 2. Create Dataset CSV
 
@@ -216,6 +220,8 @@ histomil-grid \
   --folds <int>                     # Number of cross-validation folds (default: 10)
   --use_class_weights               # Enable class weighting (default)
   --no-use_class_weights            # Disable class weighting
+  --use_weighted_sampler            # Enable weighted training sampling
+  --no-use_weighted_sampler         # Disable weighted sampling (default)
   --grid_params <path>              # Grid JSON with parameter lists (default: configs/<mil>.json)
 ```
 
@@ -237,11 +243,15 @@ histomil-train \
   --folds <int>                     # Number of folds (default: 1)
   --use_class_weights               # Enable class weighting (default)
   --no-use_class_weights            # Disable class weighting
+  --use_weighted_sampler            # Enable weighted training sampling
+  --no-use_weighted_sampler         # Disable weighted sampling (default)
   --transfer_mode <mode>            # scratch, head_only, or partial (default: scratch)
   --pretrained_checkpoint <path>    # Required by head_only and partial
 ```
 
 `histomil-train` trains and evaluates the single configuration supplied through `--params_path`. In `scratch` mode, the model is initialized randomly and no checkpoint is provided. In `head_only` and `partial`, a compatible checkpoint is required.
+
+Both training commands default to weighted sampling off, independently of class weighting. Use `--use_weighted_sampler --no-use_class_weights` for sampling alone. The sampler draws training slides with replacement, using inverse class frequencies; each epoch draws as many samples as there are training slides, so classes are balanced in expectation rather than necessarily in every epoch. Validation and test data are not sampled this way.
 
 ### Partial Configuration (`histomil/configs/req_grid/`)
 
@@ -366,7 +376,7 @@ HistoMILTrainer/
 
 ### Training Output
 
-`histomil-grid` produces grid-search metrics, selected best-parameter JSON files, fold checkpoints, and test predictions.
+`histomil-grid` produces grid-search metrics, selected best-parameter JSON files, fold checkpoints, and test predictions. Its `training_results_<feature_extractor>.<mil>.csv` records the best-epoch training/validation metrics for every fold and parameter configuration, including the parameter columns.
 
 `histomil-train` produces:
 - `{fold}_best_model.pt`: Best model checkpoint for each fold
@@ -375,6 +385,16 @@ HistoMILTrainer/
 - `test_results_<feature_extractor>.<mil>.csv`: Test metrics
 - `predictions_<feature_extractor>.<mil>_<fold>.csv`: Test probabilities and labels
 - `best_params_<feature_extractor>.<mil>.json`: Copy of the fixed configuration used for training
+
+Both training workflows use TorchMetrics 1.9.0 to match the mimyc definitions: multiclass accuracy (micro), multiclass ROC AUC (macro), macro accuracy (`balanced_acc`), and binary calibration error (`ece`, 15 bins, L1 norm). Accuracy, AUC and balanced accuracy receive both class softmax probabilities; ECE receives the positive-class probability. Metrics are accumulated over the complete phase, with separate state for each epoch and phase. AUC is reported as `NaN` when only one target class is present. Class weights affect the loss, while metrics are unweighted; training metrics reflect the slides drawn by the sampler.
+
+Existing `train_acc`, `val_acc`, `test_acc` and corresponding `*_auc` fields retain their names. The result CSVs also include `train_balanced_acc`, `val_balanced_acc`, `test_balanced_acc` and corresponding `*_ece` fields. Training and validation metrics are logged each epoch and the selected checkpoint's epoch is saved in the results. Testing runs once per selected fold checkpoint. Existing test F1 and prediction outputs are retained.
+
+### Importing the supplied DLBCL folds
+
+Run `python scripts/convert_data_splits.py data_splits.zip` to generate `data_splits_converted.zip`. Extract it and pass `cv/dataset.csv` as `--csv_path` and `cv/` as `--splits_dir`, using `--folds 10`. Each fold's validation slides are also marked as its test slides, allowing the existing final test pass to run. Those automatic test statistics evaluate the validation cohort again and are not independent test estimates. Original training assignments are preserved.
+
+The eight CSVs in `test_sets/` remain separate for later prediction using saved checkpoints. The joint cohorts overlap with their component cohorts. `histomil-predict` exports predictions and attention scores; calculating external-test metrics still requires joining predictions to labels by `slide_id`.
 
 ### Split Generation Output
 
