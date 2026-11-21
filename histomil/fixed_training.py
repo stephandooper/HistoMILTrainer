@@ -174,6 +174,9 @@ class FixedParameterTrainer:
             sampler=sampler,
             collate_fn=variable_patches_collate_fn,
             worker_init_fn=lambda _: np.random.seed(self.SEED),
+            num_workers=4,
+            prefetch_factor=1,
+            persistent_workers=True,
         )
 
     def _save_predictions(self, fold, y_scores, y_true):
