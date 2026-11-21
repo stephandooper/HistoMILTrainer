@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(BASH is None, reason="requires Linux bash")
 
 def run(env=None, *args):
     return subprocess.run([BASH, str(SCRIPT), *args], text=True, capture_output=True,
-                          env={**os.environ, **(env or {})})
+                          env={**os.environ, "TRIDENT_COORDS_DIR": "20x_224px_0px_overlap", **(env or {})})
 
 
 def commands(result):

@@ -5,7 +5,7 @@
 set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 FEATURES_ROOT=${FEATURES_ROOT:-/data/features}
-TRIDENT_COORDS_DIR=${TRIDENT_COORDS_DIR:-20x_224px_0px_overlap}
+TRIDENT_COORDS_DIR=${TRIDENT_COORDS_DIR:-}
 SPLITS_ROOT=${SPLITS_ROOT:-/data/splits}
 RESULTS_ROOT=${RESULTS_ROOT:-/results}
 PARAMS_ROOT=${PARAMS_ROOT:-${SCRIPT_DIR}/cv_params}
@@ -36,15 +36,41 @@ done
 for mil in "${mils[@]}"; do
   case "$mil" in abmil|dsmil|transmil|clam) ;; *) echo "Invalid MIL: $mil" >&2; exit 2;; esac
 done
-feature_dir() {
-  local mapped subset="$2" root
-  case "$1" in
+declare -A feature_roots
+resolve_root() {
+  local encoder="$1" mapped job coords candidate
+  local -a matches=()
+  case "$encoder" in
     virchow2) mapped=virchow2_0.5mpp_trident;;
     uni_v2) mapped=uni2_0.5mpp_trident;;
     conch_v15) mapped=conch15_0.5mpp_trident;;
     mascaret) mapped=mascaret_0.5mpp_trident;;
   esac
-  root="${FEATURES_ROOT}/${mapped}/${TRIDENT_COORDS_DIR}/features_$1"
+  job="${FEATURES_ROOT}/${mapped}"
+  if [[ -n $TRIDENT_COORDS_DIR ]]; then
+    coords=$TRIDENT_COORDS_DIR
+  else
+    for candidate in "$job"/*; do
+      [[ -d $candidate ]] || continue
+      coords=${candidate##*/}
+      if [[ $coords =~ ^[0-9]+([.][0-9]+)?x_[0-9]+px_[0-9]+px_overlap$ && -d $candidate/features_$encoder ]]; then
+        matches+=("$coords")
+      fi
+    done
+    if ((${#matches[@]} == 0)); then
+      echo "No TRIDENT coordinates folder with features_$encoder found in $job; set TRIDENT_COORDS_DIR" >&2
+      return 1
+    elif ((${#matches[@]} > 1)); then
+      printf 'Ambiguous TRIDENT coordinates folders in %s: %s; set TRIDENT_COORDS_DIR\n' "$job" "${matches[*]}" >&2
+      return 1
+    fi
+    coords=${matches[0]}
+  fi
+  feature_roots[$encoder]="${job}/${coords}/features_${encoder}"
+}
+for encoder in "${encoders[@]}"; do resolve_root "$encoder"; done
+feature_dir() {
+  local root="${feature_roots[$1]}" subset="$2"
   if [[ -d "$root/$subset" ]]; then printf '%s\n' "$root/$subset"; else printf '%s\n' "$root"; fi
 }
 run() {

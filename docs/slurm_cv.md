@@ -78,10 +78,14 @@ Default feature paths:
 | Mascaret (`mascaret`) | `FEATURES_ROOT/mascaret_0.5mpp_trident` | 1536 |
 
 These directories are TRIDENT job folders. The runner reads H5 embeddings from
-`FEATURES_ROOT/MAPPED_FOLDER/20x_224px_0px_overlap/features_ENCODER/`, where
+`FEATURES_ROOT/MAPPED_FOLDER/<mag>x_<px>px_<overlap>px_overlap/features_ENCODER/`, where
 `ENCODER` is the canonical key (for example `features_virchow2` or `features_uni_v2`).
 This follows TRIDENT's `job_dir/coords_dir/features_<encoder>/` output layout.
-Set `TRIDENT_COORDS_DIR` to override the default `20x_224px_0px_overlap` patch folder.
+The patch configuration directory is discovered separately for each encoder; it
+must match the pattern and contain that encoder's features directory. Zero matches
+produce a missing-directory error; multiple matches produce an ambiguity error
+listing the candidates. Set `TRIDENT_COORDS_DIR` to choose a specific directory,
+or leave it unset for automatic discovery.
 Each resolved features directory can hold all CV and external H5 files together,
 named `<slide_id without extension>.h5`. Alternatively, use `cv/` under that directory
 for the CV cohort and `COHORT/` under it for individual test cohorts
@@ -111,11 +115,16 @@ Output folders continue using encoder keys (`virchow2`, `uni_v2`, `conch_v15`,
 select the existing three with
 `ENCODERS="virchow2 uni_v2 conch_v15" bash scripts/run_cv_matrix.sh`.
 
-First inspect the commands without needing data or a GPU:
+First inspect the commands without loading slide data or needing a GPU (the
+feature directories must be visible for automatic discovery):
 
 ```bash
 bash scripts/run_cv_matrix.sh --dry-run
 ```
+
+For a dry run without access to the feature directories, provide an explicit
+patch folder, for example
+`TRIDENT_COORDS_DIR=20x_224px_0px_overlap bash scripts/run_cv_matrix.sh --dry-run`.
 
 Then train and evaluate everything:
 

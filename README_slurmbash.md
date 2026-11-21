@@ -10,11 +10,14 @@ The Bash runner uses these feature folders under `FEATURES_ROOT`:
 | `mascaret` | `mascaret_0.5mpp_trident` |
 
 These are TRIDENT job folders. H5 embeddings are read from
-`FEATURES_ROOT/<feature folder>/20x_224px_0px_overlap/features_<encoder key>/`.
+`FEATURES_ROOT/<feature folder>/<mag>x_<px>px_<overlap>px_overlap/features_<encoder key>/`.
 For example, Virchow2 uses
 `virchow2_0.5mpp_trident/20x_224px_0px_overlap/features_virchow2/`.
-Set `TRIDENT_COORDS_DIR` if your patch configuration folder differs from
-`20x_224px_0px_overlap`.
+The patch folder is discovered separately for each encoder (for example 224, 256
+or 512 pixel patches). A candidate must contain that encoder's `features_*`
+directory. If multiple candidates qualify, set `TRIDENT_COORDS_DIR` explicitly.
+Leave it unset for automatic discovery. A dry run also discovers real folders;
+set an explicit override to print commands without access to the feature folders.
 
 Inside your container, set these once:
 
