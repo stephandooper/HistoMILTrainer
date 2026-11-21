@@ -23,6 +23,9 @@ CPU smoke test of the model, metrics and native libraries. No GPU is needed to b
 
 ## Run training
 
+For an interactive Slurm/Pyxis session and the four-encoder/four-model CV matrix,
+see [the cluster workflow](../docs/slurm_cv.md).
+
 Re-extract `data_splits_converted.zip` into a local directory first. Supply a scalar
 model-parameter JSON as described in the repository README. Mount inputs read-only
 and keep output and caches writable. This example uses Bash syntax; replace host

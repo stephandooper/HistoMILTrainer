@@ -33,6 +33,8 @@ HistoMILTrainer offers a streamlined framework to train MIL architectures on his
 
 A dedicated GPU-capable Docker image is available; see [container build and run instructions](docker/README.md). It uses Python 3.10 and CUDA 12.8 and runs CPU validation during the build.
 
+For interactive Slurm/Pyxis training across Virchow2, UNI2, CONCH 1.5 and Mascaret with ABMIL, DSMIL, TransMIL and CLAM, use the [10-fold matrix runner](docs/slurm_cv.md).
+
 HistoMILTrainer requires **Python 3.10**. Choose one of the following installation methods:
 
 ### Option 1: Using Conda (Recommended)

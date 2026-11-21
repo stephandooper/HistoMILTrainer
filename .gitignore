@@ -216,6 +216,7 @@ wikg
 rrt
 dftd
 run*.sh
+!scripts/run_cv_matrix.sh
 heatmap_viz/
 logs/
 temp_dir/

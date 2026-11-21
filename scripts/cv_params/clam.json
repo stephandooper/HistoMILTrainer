@@ -1,0 +1,10 @@
+{
+  "embed_dim": 512,
+  "dropout": 0.25,
+  "attention_dim": 384,
+  "k_sample": 8,
+  "instance_loss_fn": "svm",
+  "gate": true,
+  "bag_weight": 0.7,
+  "subtyping": false
+}

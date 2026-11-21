@@ -105,7 +105,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && uv pip check --python /opt/venv/bin/python \
     && uv pip freeze --python /opt/venv/bin/python > /opt/venv/requirements-resolved.txt
 COPY tests ./tests
-RUN python -m pytest tests/test_metrics.py tests/test_models.py tests/test_weighted_sampler.py tests/test_convert_data_splits.py
+RUN bash -n scripts/run_cv_matrix.sh \
+    && python -m pytest tests/test_metrics.py tests/test_models.py tests/test_weighted_sampler.py tests/test_convert_data_splits.py tests/test_external_evaluation.py tests/test_cv_runner.py
 
 FROM ubuntu:24.04 AS runtime
 COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /uvx /bin/
