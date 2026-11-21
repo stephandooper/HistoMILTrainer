@@ -174,8 +174,8 @@ class FixedParameterTrainer:
             sampler=sampler,
             collate_fn=variable_patches_collate_fn,
             worker_init_fn=lambda _: np.random.seed(self.SEED),
-            num_workers=4,
-            prefetch_factor=1,
+            num_workers=6,
+            prefetch_factor=2,
             persistent_workers=True,
         )
 
@@ -273,7 +273,7 @@ class FixedParameterTrainer:
                 self.results_dir,
                 f"{fold}_best_model.pt",
             )
-            shutil.copy2(checkpoint, best_model_file)
+            shutil.copyfile(checkpoint, best_model_file)
 
             self.logger.info(
                 "Fold %d completed | val_auc=%.4f | test_auc=%.4f",

@@ -322,7 +322,7 @@ class GridSearch:
         best_model_file = "_".join( [a + "=" + str(clean_params[a]) for a in clean_params.keys()] ) + "-checkpoint.pt"
         for fold in range(self.folds):
             fold_model_file = f"{self.results_dir}/{fold}-{best_model_file}"
-            shutil.copy(fold_model_file, f"{self.results_dir}/{fold}_best_model.pt")
+            shutil.copyfile(fold_model_file, f"{self.results_dir}/{fold}_best_model.pt")
 
         self.logger.info("=" * 60)
         self.logger.info("✓ Grid search completed successfully")

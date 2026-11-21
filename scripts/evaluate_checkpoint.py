@@ -50,8 +50,8 @@ def evaluate(args):
         batch_size=1,
         shuffle=False,
         collate_fn=variable_patches_collate_fn,
-        num_workers=4,
-        prefetch_factor=1,
+        num_workers=6,
+        prefetch_factor=2,
         persistent_workers=True,
     )
     metrics, probabilities, labels = test(model, loader, model_name=args.mil)
